@@ -11,7 +11,8 @@ import joblib
 import numpy as np
 from PIL import Image, ImageFilter
 
-SKLEARN_MODEL_PATH = Path(__file__).resolve().parent / "models" / "breakhis_sklearn.joblib"
+PROJECT_ROOT = Path(__file__).resolve().parent
+SKLEARN_MODEL_FILENAME = "breakhis_sklearn.joblib"
 # Notebook F1-optimal threshold for the Keras CNN; lower threshold improves malignant recall.
 CNN_MALIGNANT_THRESHOLD = 0.20
 SKLEARN_MALIGNANT_THRESHOLD = 0.35
@@ -191,14 +192,28 @@ def is_histology_like(image: Image.Image) -> bool:
     return True
 
 def _candidate_model_paths() -> list[Path]:
-    root = Path(__file__).resolve().parent
     names = (
         "breakhis_final_model.keras",
         "best_breakhis_cnn.keras",
         "models/breakhis_final_model.keras",
         "models/best_breakhis_cnn.keras",
     )
-    return [root / name for name in names]
+    return [PROJECT_ROOT / name for name in names]
+
+
+def _candidate_sklearn_model_paths() -> list[Path]:
+    names = (
+        f"models/{SKLEARN_MODEL_FILENAME}",
+        SKLEARN_MODEL_FILENAME,
+    )
+    return [PROJECT_ROOT / name for name in names]
+
+
+def _resolve_sklearn_model_path() -> Path | None:
+    for path in _candidate_sklearn_model_paths():
+        if path.exists():
+            return path
+    return None
 
 
 def _transfer_weights(saved: Any, inference: Any) -> None:
@@ -225,41 +240,39 @@ def _model_download_url() -> str | None:
     return None
 
 
-def _ensure_sklearn_model_file() -> tuple[bool, str]:
-    if SKLEARN_MODEL_PATH.exists():
-        return True, ""
+def _ensure_sklearn_model_file() -> tuple[Path | None, str]:
+    existing = _resolve_sklearn_model_path()
+    if existing is not None:
+        return existing, ""
 
     url = _model_download_url()
     if not url:
-        return False, (
-            "Trained model not found in the repo. On your machine run "
-            "`python3 train_sklearn_model.py`, then commit and push "
-            "`models/breakhis_sklearn.joblib` to GitHub. "
-            "Alternatively, set a `BREAKHIS_MODEL_URL` Streamlit secret "
-            "to a direct download link for that file."
+        return None, (
+            "Trained model not found in the repo. Commit `breakhis_sklearn.joblib` "
+            "(project root) or `models/breakhis_sklearn.joblib` to GitHub, or set a "
+            "`BREAKHIS_MODEL_URL` Streamlit secret to a direct download link."
         )
 
-    SKLEARN_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    target = PROJECT_ROOT / "models" / SKLEARN_MODEL_FILENAME
+    target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        urllib.request.urlretrieve(url, SKLEARN_MODEL_PATH)
-        return True, "Downloaded sklearn model from BREAKHIS_MODEL_URL"
+        urllib.request.urlretrieve(url, target)
+        return target, "Downloaded sklearn model from BREAKHIS_MODEL_URL"
     except Exception as exc:
-        return False, f"Failed to download model from BREAKHIS_MODEL_URL: {exc}"
+        return None, f"Failed to download model from BREAKHIS_MODEL_URL: {exc}"
 
 
 def _load_sklearn_model() -> tuple[SklearnBreakHisModel | None, str]:
-    download_note = ""
-    if not SKLEARN_MODEL_PATH.exists():
-        ok, status = _ensure_sklearn_model_file()
-        if not ok:
-            return None, status
-        download_note = f"{status}. " if status else ""
+    model_path, download_note = _ensure_sklearn_model_file()
+    if model_path is None:
+        return None, download_note
 
     try:
-        bundle = joblib.load(SKLEARN_MODEL_PATH)
+        bundle = joblib.load(model_path)
+        prefix = f"{download_note}. " if download_note else ""
         return (
             SklearnBreakHisModel(bundle),
-            f"{download_note}Loaded sklearn classifier from {SKLEARN_MODEL_PATH.name}",
+            f"{prefix}Loaded sklearn classifier from {model_path.name}",
         )
     except Exception as exc:
         return None, f"Failed to load sklearn model: {exc}"
@@ -293,7 +306,7 @@ def load_model() -> tuple[Any, str]:
         )
 
     return None, (
-        "No model available. Commit `models/breakhis_sklearn.joblib` to GitHub "
+        "No model available. Commit `breakhis_sklearn.joblib` to GitHub "
         "(train locally with `python3 train_sklearn_model.py`), set a "
         "`BREAKHIS_MODEL_URL` Streamlit secret, or add `breakhis_final_model.keras` "
         "with TensorFlow."
