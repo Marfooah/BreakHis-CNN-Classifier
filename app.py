@@ -324,7 +324,7 @@ def inject_css() -> None:
 
 def init_state() -> None:
     defaults = {
-        "page": "upload",
+        "page": "intro",
         "uploaded_image": None,
         "uploaded_name": None,
         "results": None,
@@ -351,15 +351,16 @@ def render_header() -> None:
             unsafe_allow_html=True,
         )
     with right:
-        nav_cols = st.columns(3)
+        nav_cols = st.columns(4)
         nav_items = [
+            ("intro", "Home"),
             ("upload", "Analysis"),
             ("results", "Results"),
             ("confidence", "Confidence"),
         ]
         for col, (key, label) in zip(nav_cols, nav_items):
             with col:
-                disabled = key != "upload" and st.session_state.results is None
+                disabled = key not in ("intro", "upload") and st.session_state.results is None
                 if st.button(
                     label,
                     key=f"nav_{key}",
@@ -408,6 +409,76 @@ def confidence_ring_html(pct: float, color: str) -> str:
         </div>
     </div>
     """
+
+
+def page_intro() -> None:
+    st.markdown('<div class="upload-hero">', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="upload-icon-ring">🔬</div>
+        <h1 style="font-size:40px;font-weight:700;margin-bottom:12px;letter-spacing:-0.02em;">
+            HistoAI
+        </h1>
+        <p style="font-size:18px;color:#c1c6d7;margin-bottom:8px;">
+            AI-Powered Breast Histopathology Diagnostic Assistant
+        </p>
+        <p style="color:#c1c6d7;font-size:15px;line-height:1.6;margin-bottom:32px;">
+            HistoAI analyzes microscopic tissue slides from the BreakHis dataset to help
+            clinicians classify breast biopsies as <strong style="color:#53e16f;">Benign</strong>
+            or <strong style="color:#ff6b6b;">Malignant</strong> — with confidence scoring
+            and visual explainability.
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("Start Analysis →", type="primary", use_container_width=True):
+        st.session_state.page = "upload"
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    cols = st.columns(3)
+    steps = [
+        ("1", "Upload Slide", "Import a PNG or JPG histopathology microscope image."),
+        ("2", "AI Diagnosis", "Our classifier evaluates tissue morphology and returns a label."),
+        ("3", "Review Confidence", "Explore probability scores, findings, and Grad-CAM heatmaps."),
+    ]
+    for col, (num, title, body) in zip(cols, steps):
+        with col:
+            st.markdown(
+                f"""
+                <div class="insight-tile">
+                    <div style="font-size:14px;font-weight:700;color:#0070eb;margin-bottom:8px;">
+                        STEP {num}
+                    </div>
+                    <div class="insight-title">{title}</div>
+                    <div class="insight-body">{body}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    feat_cols = st.columns(3)
+    features = [
+        ("🧬", "BreakHis Trained", "Classifier trained on thousands of annotated breast tissue images."),
+        ("🎯", "High Sensitivity", "Optimized thresholds to prioritize malignant case detection."),
+        ("🔒", "Clinical Support", "Decision-support tool — not a substitute for pathologist review."),
+    ]
+    for col, (icon, title, body) in zip(feat_cols, features):
+        with col:
+            st.markdown(
+                f"""
+                <div class="insight-tile">
+                    <div style="font-size:24px;margin-bottom:8px;">{icon}</div>
+                    <div class="insight-title">{title}</div>
+                    <div class="insight-body">{body}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def page_upload() -> None:
@@ -754,14 +825,16 @@ def main() -> None:
     render_header()
 
     page = st.session_state.page
-    if page == "upload":
+    if page == "intro":
+        page_intro()
+    elif page == "upload":
         page_upload()
     elif page == "results":
         page_results()
     elif page == "confidence":
         page_confidence()
     else:
-        st.session_state.page = "upload"
+        st.session_state.page = "intro"
         st.rerun()
 
     render_footer()
