@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import urllib.request
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -208,12 +210,57 @@ def _transfer_weights(saved: Any, inference: Any) -> None:
         dst.set_weights(src.get_weights())
 
 
+def _model_download_url() -> str | None:
+    url = os.environ.get("BREAKHIS_MODEL_URL", "").strip()
+    if url:
+        return url
+    try:
+        import streamlit as st
+
+        secret_url = st.secrets.get("BREAKHIS_MODEL_URL", "")
+        if secret_url:
+            return str(secret_url).strip()
+    except Exception:
+        pass
+    return None
+
+
+def _ensure_sklearn_model_file() -> tuple[bool, str]:
+    if SKLEARN_MODEL_PATH.exists():
+        return True, ""
+
+    url = _model_download_url()
+    if not url:
+        return False, (
+            "Trained model not found in the repo. On your machine run "
+            "`python3 train_sklearn_model.py`, then commit and push "
+            "`models/breakhis_sklearn.joblib` to GitHub. "
+            "Alternatively, set a `BREAKHIS_MODEL_URL` Streamlit secret "
+            "to a direct download link for that file."
+        )
+
+    SKLEARN_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        urllib.request.urlretrieve(url, SKLEARN_MODEL_PATH)
+        return True, "Downloaded sklearn model from BREAKHIS_MODEL_URL"
+    except Exception as exc:
+        return False, f"Failed to download model from BREAKHIS_MODEL_URL: {exc}"
+
+
 def _load_sklearn_model() -> tuple[SklearnBreakHisModel | None, str]:
+    download_note = ""
     if not SKLEARN_MODEL_PATH.exists():
-        return None, ""
+        ok, status = _ensure_sklearn_model_file()
+        if not ok:
+            return None, status
+        download_note = f"{status}. " if status else ""
+
     try:
         bundle = joblib.load(SKLEARN_MODEL_PATH)
-        return SklearnBreakHisModel(bundle), f"Loaded sklearn classifier from {SKLEARN_MODEL_PATH.name}"
+        return (
+            SklearnBreakHisModel(bundle),
+            f"{download_note}Loaded sklearn classifier from {SKLEARN_MODEL_PATH.name}",
+        )
     except Exception as exc:
         return None, f"Failed to load sklearn model: {exc}"
 
@@ -246,8 +293,10 @@ def load_model() -> tuple[Any, str]:
         )
 
     return None, (
-        "No model available. Run `python3 train_sklearn_model.py` once to train the "
-        "BreakHis classifier, or add `breakhis_final_model.keras` with TensorFlow."
+        "No model available. Commit `models/breakhis_sklearn.joblib` to GitHub "
+        "(train locally with `python3 train_sklearn_model.py`), set a "
+        "`BREAKHIS_MODEL_URL` Streamlit secret, or add `breakhis_final_model.keras` "
+        "with TensorFlow."
     )
 
 
